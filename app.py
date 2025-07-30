@@ -3,6 +3,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, s
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import mimetypes
+import fnmatch # For wildcard matching in search
 
 # --- Flask App Configuration ---
 app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -49,6 +50,12 @@ FORBIDDEN_PATHS_RELATIVE_WINDOWS = [
 
 # Ensure all paths are absolute and normalized
 BASE_MOUNT_POINTS_IN_CONTAINER = {k: os.path.abspath(v) for k, v in BASE_MOUNT_POINTS_IN_CONTAINER.items()}
+
+# --- Custom Jinja2 Filters ---
+@app.template_filter('dirname')
+def dirname_filter(s):
+    """Returns the directory name of a path."""
+    return os.path.dirname(s)
 
 # --- Helper Functions ---
 
@@ -144,13 +151,13 @@ def get_current_directory_listing(current_path):
                 continue # Skip this item if it leads to a forbidden path
 
             if os.path.isdir(item_path):
-                items.append({'name': item_name, 'type': 'directory'})
+                items.append({'name': item_name, 'type': 'directory', 'full_path': item_path}) # Added full_path
             elif os.path.isfile(item_path):
                 try:
                     size = os.path.getsize(item_path)
                 except OSError: # Handle cases where size might not be accessible
                     size = 0
-                items.append({'name': item_name, 'type': 'file', 'size': size})
+                items.append({'name': item_name, 'type': 'file', 'size': size, 'full_path': item_path}) # Added full_path
     except PermissionError:
         flash(f"Permission denied to access '{current_path}'. Check Docker volume mounts and container user permissions.", 'danger')
     except Exception as e:
@@ -168,6 +175,68 @@ def format_size(size_bytes):
     else:
         return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
 
+def search_files(query, search_paths):
+    """
+    Searches for files and directories matching the query within specified search_paths.
+    Returns a list of dictionaries with 'name', 'type', 'full_path', 'size' (for files).
+    Supports wildcard search using fnmatch.
+    """
+    found_items = []
+    
+    # --- MODIFICATION START ---
+    # Add wildcards to the query to allow partial matching (e.g., "found" matches "Foundation")
+    # If the query already contains a wildcard, don't add more.
+    search_pattern = query.lower()
+    if '*' not in search_pattern and '?' not in search_pattern:
+        search_pattern = f"*{search_pattern}*"
+    # --- MODIFICATION END ---
+
+    for base_path in search_paths:
+        if not os.path.exists(base_path):
+            continue # Skip non-existent paths
+
+        for root, dirnames, filenames in os.walk(base_path):
+            # Do not traverse into forbidden directories
+            # We need to check 'root' before continuing deeper
+            if not is_path_allowed(root):
+                dirnames[:] = [] # Prevent os.walk from entering forbidden subdirectories
+                continue
+
+            # Check dirnames for allowed/forbidden paths before continuing deeper
+            # IMPORTANT: Modifying dirnames in-place affects os.walk's traversal
+            allowed_dirnames = []
+            for dirname in dirnames:
+                full_dirname_path = os.path.join(root, dirname)
+                if is_path_allowed(full_dirname_path):
+                    allowed_dirnames.append(dirname)
+            dirnames[:] = allowed_dirnames # Update dirnames in-place for os.walk
+
+            # Search for matching directories
+            for dirname in dirnames:
+                full_path = os.path.join(root, dirname)
+                # --- MODIFICATION START ---
+                if fnmatch.fnmatch(dirname.lower(), search_pattern):
+                # --- MODIFICATION END ---
+                    found_items.append({'name': dirname, 'type': 'directory', 'full_path': full_path})
+
+            # Search for matching files
+            for filename in filenames:
+                full_path = os.path.join(root, filename)
+                # --- MODIFICATION START ---
+                if is_path_allowed(full_path) and fnmatch.fnmatch(filename.lower(), search_pattern):
+                # --- MODIFICATION END ---
+                    try:
+                        size = os.path.getsize(full_path)
+                    except OSError:
+                        size = 0 # Cannot get size
+                    found_items.append({'name': filename, 'type': 'file', 'size': size, 'full_path': full_path})
+    
+    # Sort results: directories first, then files, then by name
+    found_items.sort(key=lambda x: (x['type'] != 'directory', x['name'].lower()))
+    
+    return found_items
+
+
 # --- Routes ---
 
 @app.route('/')
@@ -182,7 +251,7 @@ def index():
             return redirect(url_for('index', path=list(BASE_MOUNT_POINTS_IN_CONTAINER.values())[0]))
         else:
             flash("No base mount points configured. Please configure BASE_MOUNT_POINTS_IN_CONTAINER in app.py", 'danger')
-            return render_template('index.html', current_path='/', items=[], allowed_paths_display=[])
+            return render_template('index.html', current_path='/', items=[], allowed_paths_display=[], search_query=None, search_results=[])
 
     current_path = os.path.abspath(current_path_param)
 
@@ -192,7 +261,7 @@ def index():
         if BASE_MOUNT_POINTS_IN_CONTAINER:
             return redirect(url_for('index', path=list(BASE_MOUNT_POINTS_IN_CONTAINER.values())[0]))
         else:
-            return render_template('index.html', current_path='/', items=[], allowed_paths_display=[])
+            return render_template('index.html', current_path='/', items=[], allowed_paths_display=[], search_query=None, search_results=[])
 
     items = get_current_directory_listing(current_path)
 
@@ -261,7 +330,36 @@ def index():
                            parent_path=parent_path,
                            path_segments=path_segments,
                            allowed_paths_display=allowed_paths_display,
-                           format_size=format_size) # Pass function to template
+                           format_size=format_size,
+                           search_query=None, # No search query on initial load
+                           search_results=[]) # No search results on initial load
+
+
+@app.route('/search', methods=['GET'])
+@login_required
+def search():
+    """Search for files and directories."""
+    query = request.args.get('query', '').strip()
+    search_results = []
+    if query:
+        # Determine the paths to search within
+        # For simplicity, search all configured base mount points
+        search_paths = list(BASE_MOUNT_POINTS_IN_CONTAINER.values())
+        search_results = search_files(query, search_paths)
+        flash(f"Search results for '{query}' ({len(search_results)} items found).", 'info')
+        if not search_results:
+            flash("No files or folders found matching your search query.", 'warning')
+
+    return render_template('index.html',
+                           current_path=None, # No specific path when showing search results
+                           items=[], # No regular directory listing
+                           parent_path=None,
+                           path_segments=[], # No breadcrumbs for search results
+                           allowed_paths_display=[], # Not showing initial mounts for search
+                           format_size=format_size,
+                           search_query=query,
+                           search_results=search_results)
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():

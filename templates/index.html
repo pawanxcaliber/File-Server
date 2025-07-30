@@ -104,90 +104,122 @@
             <a href="{{ url_for('logout') }}" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md shadow-md transition duration-200">Logout</a>
         </div>
 
-        <div class="mb-4 text-sm text-gray-400 flex items-center flex-wrap">
-            {% if path_segments %}
-                <a href="{{ url_for('index', path=path_segments[0].path) }}" class="text-blue-400 hover:underline">Root</a>
-                {% for segment in path_segments %}
-                    <span class="mx-1">/</span>
-                    <a href="{{ url_for('index', path=segment.path) }}" class="text-blue-400 hover:underline">{{ segment.name }}</a>
-                {% endfor %}
-            {% else %}
-                <span class="text-white">Current Path: /</span>
-            {% endif %}
+        <div class="mb-6">
+            <form action="{{ url_for('search') }}" method="get" class="flex">
+                <input type="text" name="query" placeholder="Search files and folders..."
+                       value="{{ search_query if search_query }}"
+                       class="flex-grow p-3 rounded-l-md bg-gray-900 border border-gray-700 focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-white">
+                <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-r-md shadow-md transition duration-200">Search</button>
+            </form>
         </div>
 
-        {% if not path_segments or current_path in allowed_paths_display|map(attribute='path')|list %}
-            <div class="mb-4">
-                <h2 class="text-xl font-semibold mb-3">Available Drives/Root Folders:</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {% for p in allowed_paths_display %}
-                        <a href="{{ url_for('index', path=p.path) }}" class="flex items-center p-4 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-200">
-                            <span class="file-icon text-yellow-400">📁</span>
-                            <span class="file-name text-lg font-medium">{{ p.name }}</span>
-                        </a>
+        {% if search_query %}
+            <h2 class="text-xl font-semibold mb-3">Search Results for "{{ search_query }}":</h2>
+            <div class="bg-gray-700 rounded-lg shadow-md overflow-hidden mb-6">
+                {% if search_results %}
+                    {% for item in search_results %}
+                        {% if item.type == 'directory' %}
+                            <a href="{{ url_for('index', path=item.full_path) }}" class="file-item">
+                                <span class="file-icon text-yellow-400">📁</span>
+                                <span class="file-name">{{ item.name }}</span>
+                            </a>
+                        {% else %}
+                            <div class="file-item cursor-pointer" onclick="handleFileClick('{{ item.name | e }}', '{{ item.full_path | dirname | e }}')">
+                                <span class="file-icon text-green-400">📄</span>
+                                <span class="file-name">{{ item.name }}</span>
+                                <span class="file-size">{{ format_size(item.size) }}</span>
+                            </div>
+                        {% endif %}
                     {% endfor %}
+                {% else %}
+                    <p class="p-4 text-gray-400">No results found for "{{ search_query }}".</p>
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="mb-4 text-sm text-gray-400 flex items-center flex-wrap">
+                {% if path_segments %}
+                    <a href="{{ url_for('index', path=path_segments[0].path) }}" class="text-blue-400 hover:underline">Root</a>
+                    {% for segment in path_segments %}
+                        <span class="mx-1">/</span>
+                        <a href="{{ url_for('index', path=segment.path) }}" class="text-blue-400 hover:underline">{{ segment.name }}</a>
+                    {% endfor %}
+                {% else %}
+                    <span class="text-white">Current Path: /</span>
+                {% endif %}
+            </div>
+
+            {% if not path_segments or current_path in allowed_paths_display|map(attribute='path')|list %}
+                <div class="mb-4">
+                    <h2 class="text-xl font-semibold mb-3">Available Drives/Root Folders:</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {% for p in allowed_paths_display %}
+                            <a href="{{ url_for('index', path=p.path) }}" class="flex items-center p-4 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-200">
+                                <span class="file-icon text-yellow-400">📁</span>
+                                <span class="file-name text-lg font-medium">{{ p.name }}</span>
+                            </a>
+                        {% endfor %}
+                    </div>
                 </div>
+            {% endif %}
+
+            <div class="bg-gray-700 rounded-lg shadow-md overflow-hidden mb-6">
+                {% if parent_path is not none %}
+                <a href="{{ url_for('index', path=parent_path) }}" class="file-item text-blue-400 hover:underline">
+                    <span class="file-icon">⬆️</span>
+                    <span class="file-name">.. (Up a directory)</span>
+                </a>
+                {% endif %}
+
+                {% for item in items %}
+                    {% if item.type == 'directory' %}
+                        <a href="{{ url_for('index', path=current_path + '/' + item.name) }}" class="file-item">
+                            <span class="file-icon text-yellow-400">📁</span>
+                            <span class="file-name">{{ item.name }}</span>
+                        </a>
+                    {% else %}
+                        <div class="file-item cursor-pointer" onclick="handleFileClick('{{ item.name | e }}', '{{ item.full_path | dirname | e }}')">
+                            <span class="file-icon text-green-400">📄</span>
+                            <span class="file-name">{{ item.name }}</span>
+                            <span class="file-size">{{ format_size(item.size) }}</span>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+                {% if not items and parent_path is none and not allowed_paths_display %}
+                    <p class="p-4 text-gray-400">No items found in this directory. Check BASE_MOUNT_POINTS_IN_CONTAINER configuration.</p>
+                {% elif not items and (parent_path is not none or allowed_paths_display) %}
+                    <p class="p-4 text-gray-400">This directory is empty.</p>
+                {% endif %}
+            </div>
+
+            <div class="mb-6 p-4 bg-gray-700 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-3">Upload File to Current Directory</h2>
+                <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" class="flex flex-col space-y-4">
+                    <input type="hidden" name="current_path" value="{{ current_path | e }}">
+                    <input type="file" name="file" id="fileInput" class="block w-full text-sm text-gray-300
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-md file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-500 file:text-white
+                        hover:file:bg-blue-600 cursor-pointer">
+                    <button type="submit" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md shadow-md transition duration-200">Upload</button>
+                </form>
             </div>
         {% endif %}
 
-        <div class="bg-gray-700 rounded-lg shadow-md overflow-hidden mb-6">
-            {% if parent_path is not none %}
-            <a href="{{ url_for('index', path=parent_path) }}" class="file-item text-blue-400 hover:underline">
-                <span class="file-icon">⬆️</span>
-                <span class="file-name">.. (Up a directory)</span>
-            </a>
-            {% endif %}
+        <div id="videoOptionsModal" class="modal">
+            <div class="modal-content">
+                <span class="close-button" onclick="closeVideoModal()">&times;</span>
+                <h3 class="text-xl font-bold mb-4 text-blue-400">Video Options</h3>
+                <p class="text-gray-300 mb-4">Choose an action for this video file:</p>
+                
+                <label for="videoStreamUrl" class="block text-left text-sm font-medium text-gray-400 mb-1">VLC Stream URL:</label>
+                <input type="text" id="videoStreamUrl" readonly class="w-full p-2 bg-gray-900 border border-gray-700 rounded-md text-sm text-white mb-4">
+                <button onclick="copyUrl()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow-md transition duration-200 mb-4">Copy VLC URL</button>
 
-            {% for item in items %}
-                {% if item.type == 'directory' %}
-                    <a href="{{ url_for('index', path=current_path + '/' + item.name) }}" class="file-item">
-                        <span class="file-icon text-yellow-400">📁</span>
-                        <span class="file-name">{{ item.name }}</span>
-                    </a>
-                {% else %}
-                    <div class="file-item cursor-pointer" onclick="handleFileClick('{{ item.name | e }}', '{{ current_path | e }}')">
-                        <span class="file-icon text-green-400">📄</span>
-                        <span class="file-name">{{ item.name }}</span>
-                        <span class="file-size">{{ format_size(item.size) }}</span>
-                    </div>
-                {% endif %}
-            {% endfor %}
-            {% if not items and parent_path is none and not allowed_paths_display %}
-                <p class="p-4 text-gray-400">No items found in this directory. Check BASE_MOUNT_POINTS_IN_CONTAINER configuration.</p>
-            {% elif not items and (parent_path is not none or allowed_paths_display) %}
-                <p class="p-4 text-gray-400">This directory is empty.</p>
-            {% endif %}
+                <p class="text-gray-300 mb-4">Or download the file directly:</p>
+                <button id="videoDownloadBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md shadow-md transition duration-200">Download Video</button>
+            </div>
         </div>
-
-        <div class="mb-6 p-4 bg-gray-700 rounded-lg shadow-md">
-            <h2 class="text-xl font-semibold mb-3">Upload File to Current Directory</h2>
-            <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" class="flex flex-col space-y-4"> {# MODIFIED LINE HERE #}
-                <input type="hidden" name="current_path" value="{{ current_path | e }}">
-                <input type="file" name="file" id="fileInput" class="block w-full text-sm text-gray-300
-                    file:mr-4 file:py-2 file:px-4
-                    file:rounded-md file:border-0
-                    file:text-sm file:font-semibold
-                    file:bg-blue-500 file:text-white
-                    hover:file:bg-blue-600 cursor-pointer">
-                <button type="submit" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md shadow-md transition duration-200">Upload</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="videoOptionsModal" class="modal">
-        <div class="modal-content">
-            <span class="close-button" onclick="closeVideoModal()">&times;</span>
-            <h3 class="text-xl font-bold mb-4 text-blue-400">Video Options</h3>
-            <p class="text-gray-300 mb-4">Choose an action for this video file:</p>
-            
-            <label for="videoStreamUrl" class="block text-left text-sm font-medium text-gray-400 mb-1">VLC Stream URL:</label>
-            <input type="text" id="videoStreamUrl" readonly class="w-full p-2 bg-gray-900 border border-gray-700 rounded-md text-sm text-white mb-4">
-            <button onclick="copyUrl()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow-md transition duration-200 mb-4">Copy VLC URL</button>
-
-            <p class="text-gray-300 mb-4">Or download the file directly:</p>
-            <button id="videoDownloadBtn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md shadow-md transition duration-200">Download Video</button>
-        </div>
-    </div>
 
     <script>
         // Function to check if a file is a video based on common extensions
@@ -201,7 +233,6 @@
             const serverIp = window.location.hostname;
             const serverPort = window.location.port || '5000';
             const fullPathEncoded = encodeURIComponent(currentPath + '/' + filename);
-
             if (isVideoFile(filename)) {
                 // For videos, show the modal with both options
                 const streamUrl = `http://${serverIp}:${serverPort}/download?path=${fullPathEncoded}&action=stream`;

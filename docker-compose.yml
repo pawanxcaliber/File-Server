@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  file_server:
+    build: .
+    container_name: my_custom_file_server
+    ports:
+      - "5000:5000" # Host_Port:Container_Port
+    volumes:
+      # --- IMPORTANT: Configured host paths based on your previous input ---
+      # Mount your Linux user's specific Downloads and Documents directories.
+      # This allows access to these folders within the container under /host_linux_home/.
+      - "/home/pawan/Downloads:/host_linux_home/Downloads:rw"
+      - "/home/pawan/Documents:/host_linux_home/Documents:rw"
+
+      # Mount your Windows C: drive using its specific UUID.
+      # This will make the entire Windows C: drive accessible at /host_windows_c in the container.
+      - "/media/pawan/6840D17A40D150041:/host_windows_c:rw"
+
+      # Make sure your application's files are also mounted:
+      # These paths assume app.py, templates/, and static/ (if present) are in the same directory as docker-compose.yml
+      - ./app.py:/app/app.py:ro
+      - ./templates:/app/templates:ro
+      # If you have a 'static' folder for CSS/JS/images, uncomment and add this line:
+      # - ./static:/app/static:ro
+
+    environment:
+      # !!! IMPORTANT: SET THESE ENVIRONMENT VARIABLES SECURELY !!!
+      # These will override the default values in app.py for production.
+      # Generate a new FLASK_SECRET_KEY (e.g., using 'openssl rand -hex 32' in your terminal).
+      - FLASK_SECRET_KEY=fad62249097085110c14de2802459ce956cdfc37e123c315739a3399440be396
+      # Paste the password hash generated in Phase 3, Step 1.
+      - ADMIN_PASSWORD_HASH=scrypt:32768:8:1$1M6p0ZUTlHCZgeQL$5d9784132cbe39ced0aae82bcb68c9f72b19eb5bfa092b4cd797fffa12b23feffd56dfb6293b6ec9cddb26283149f643ec3167aaf59cb2116c83d0c2e97c57e6
+
+    restart: unless-stopped # Automatically restart the container unless it's explicitly stopped

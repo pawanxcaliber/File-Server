@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=My File Server
+Comment=Start the Dockerized File Server
+Exec=gnome-terminal -- bash -c "/home/pawan/Documents/Personal\\ Project/my_custom_file_server/start_file_server.sh; echo; echo 'Press ENTER to exit'; read"
+Path=/home/pawan/Documents/Personal Project/my_custom_file_server
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=Development;Network;Web;
+StartupNotify=true

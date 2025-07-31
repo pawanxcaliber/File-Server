@@ -5,16 +5,13 @@ services:
     build: .
     container_name: my_custom_file_server
     ports:
-      - "5000:5000" # Host_Port:Container_Port
+      - "5000:5000"
     volumes:
       - "/home/pawan/Downloads:/host_linux_home/Downloads:rw"
       - "/home/pawan/Documents:/host_linux_home/Documents:rw"
-
       - "/media/pawan/6840D17A40D150042:/host_windows_c:rw"
-
       - ./app.py:/app/app.py:ro
       - ./templates:/app/templates:ro
-
     environment:
       - FLASK_SECRET_KEY=fad62249097085110c14de2802459ce956cdfc37e123c315739a3399440be396
       - ADMIN_PASSWORD_HASH=scrypt:32768:8:1$1M6p0ZUTlHCZgeQL$5d9784132cbe39ced0aae82bcb68c9f72b19eb5bfa092b4cd797fffa12b23feffd56dfb6293b6ec9cddb26283149f643ec3167aaf59cb2116c83d0c2e97c57e6

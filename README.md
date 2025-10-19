@@ -9,6 +9,7 @@ This project provides a simple, web-based file server designed for convenient ac
 
 This file server offers a web-based interface for Browse directories and files. It provides direct access to specified Linux user directories, such as "Downloads" and "Documents". You can also access your mounted Windows partition, like the C: drive, directly. The server includes search functionality for finding files and folders, and allows for file uploads to the current directory. Basic authentication is handled via environment variables.
 
+Screenshot of the GUI:
 <img width="1713" height="827" alt="image" src="https://github.com/user-attachments/assets/1dbfd2fe-d35e-46d4-bc25-729cf9e458b1" />
 
 
